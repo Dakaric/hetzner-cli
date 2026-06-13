@@ -17,13 +17,21 @@ The control plane is the Hetzner Cloud API. The data plane is your system's Open
 
 ## Install
 
-### One line (macOS / Linux) — no Go, no clone
+### One line — no Go, no clone
+
+macOS / Linux:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Dakaric/hetzner-cli/main/get.sh | sh
 ```
 
-Downloads the prebuilt binary for your OS/arch, drops it in `~/.local/bin`, and prints the next step. Override the target dir with `HETZNER_BIN_DIR=...` or pin a tag with `HETZNER_VERSION=v0.1.0`.
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/Dakaric/hetzner-cli/main/get.ps1 | iex
+```
+
+Downloads the prebuilt binary for your OS/arch, puts it on your PATH, and prints the next step. Override the target dir with `HETZNER_BIN_DIR` or pin a tag with `HETZNER_VERSION=v0.1.0`.
 
 ### From source (needs [Go](https://go.dev/dl/) 1.24+)
 
