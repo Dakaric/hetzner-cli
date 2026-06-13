@@ -23,6 +23,7 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+          cache: false # zero dependencies — no go.sum to cache
 
       - name: Vet
         run: go vet ./...
