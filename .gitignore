@@ -1,0 +1,13 @@
+# built binaries
+/hetzner
+/hetzner.exe
+/dist/
+
+# secrets / local env files
+*.env
+.env
+env
+
+# OS cruft
+.DS_Store
+Thumbs.db
