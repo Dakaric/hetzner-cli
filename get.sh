@@ -1,0 +1,70 @@
+#!/bin/sh
+# hetzner CLI installer — downloads the matching prebuilt binary and puts it on your PATH.
+# No Go, no git clone required.
+#
+#   curl -fsSL https://raw.githubusercontent.com/Dakaric/hetzner-cli/main/get.sh | sh
+#
+# Knobs (env vars):
+#   HETZNER_BIN_DIR   where to install   (default: ~/.local/bin)
+#   HETZNER_VERSION   tag to install     (default: latest, e.g. v0.1.0)
+set -eu
+
+REPO="Dakaric/hetzner-cli"
+BIN_DIR="${HETZNER_BIN_DIR:-$HOME/.local/bin}"
+VERSION="${HETZNER_VERSION:-latest}"
+
+die() { echo "Error: $*" >&2; exit 1; }
+
+os="$(uname -s)"
+case "$os" in
+  Darwin) os="darwin" ;;
+  Linux)  os="linux" ;;
+  *) die "unsupported OS '$os'. On Windows use install.ps1, or grab a release archive from https://github.com/$REPO/releases" ;;
+esac
+
+arch="$(uname -m)"
+case "$arch" in
+  x86_64|amd64)  arch="amd64" ;;
+  arm64|aarch64) arch="arm64" ;;
+  *) die "unsupported architecture '$arch'" ;;
+esac
+
+asset="hetzner_${os}_${arch}.tar.gz"
+if [ "$VERSION" = "latest" ]; then
+  url="https://github.com/$REPO/releases/latest/download/$asset"
+else
+  url="https://github.com/$REPO/releases/download/$VERSION/$asset"
+fi
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+echo "Downloading $asset ($VERSION)..."
+if command -v curl >/dev/null 2>&1; then
+  curl -fsSL "$url" -o "$tmp/$asset" || die "download failed: $url"
+elif command -v wget >/dev/null 2>&1; then
+  wget -qO "$tmp/$asset" "$url" || die "download failed: $url"
+else
+  die "need curl or wget to download"
+fi
+
+tar -xzf "$tmp/$asset" -C "$tmp" || die "could not unpack $asset"
+[ -f "$tmp/hetzner" ] || die "archive did not contain a 'hetzner' binary"
+
+mkdir -p "$BIN_DIR"
+install -m 0755 "$tmp/hetzner" "$BIN_DIR/hetzner"
+echo "Installed: $BIN_DIR/hetzner"
+
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *)
+    echo
+    echo "Note: $BIN_DIR is not on your PATH. Add it to your shell profile, e.g.:"
+    echo "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.zshrc && exec \$SHELL"
+    ;;
+esac
+
+echo
+echo "Next: get a token (Console > your project > Security > API Tokens > Generate, Read & Write), then:"
+echo "  hetzner login     # paste the token; it is validated and saved"
+echo "  hetzner status    # confirm it works"

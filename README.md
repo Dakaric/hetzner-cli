@@ -17,6 +17,14 @@ The control plane is the Hetzner Cloud API. The data plane is your system's Open
 
 ## Install
 
+### One line (macOS / Linux) — no Go, no clone
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Dakaric/hetzner-cli/main/get.sh | sh
+```
+
+Downloads the prebuilt binary for your OS/arch, drops it in `~/.local/bin`, and prints the next step. Override the target dir with `HETZNER_BIN_DIR=...` or pin a tag with `HETZNER_VERSION=v0.1.0`.
+
 ### From source (needs [Go](https://go.dev/dl/) 1.24+)
 
 ```sh
@@ -29,7 +37,7 @@ cd hetzner-cli
 
 The installer builds the binary, puts it on your PATH, and runs onboarding.
 
-### Prebuilt binary
+### Prebuilt binary (manual)
 
 Grab the matching archive from the [Releases](https://github.com/Dakaric/hetzner-cli/releases) page, unpack it, and put `hetzner` (or `hetzner.exe`) anywhere on your PATH.
 
@@ -41,7 +49,20 @@ go build -o hetzner .
 
 ## Onboarding
 
-Create a token in the Hetzner Cloud Console: **select your project → Security → API Tokens → Generate API token** (Read & Write). Then:
+### Get an API token
+
+The CLI authenticates with a **project-scoped** Hetzner Cloud API token — it only ever sees the one project the token was created in.
+
+1. Sign in to the [Hetzner Cloud Console](https://console.hetzner.cloud/) and **open the project** you want to manage (create one first if you have none).
+2. In the left menu bar, click **Security**.
+3. Switch to the **API tokens** tab in the upper menu.
+4. Click **Generate API token**.
+5. Enter a **description** (e.g. `hetzner-cli`) and pick a permission level:
+   - **Read & Write** — required for anything that changes state (create/delete servers, reboots, volume attach, …). Pick this if in doubt.
+   - **Read** — GET only; enough for `hetzner status`, `servers`, and other list/show commands.
+6. Click **Generate API token**, then **copy the token immediately** — Hetzner shows it **only once** and you cannot view it again after closing the dialog.
+
+### Then log in
 
 ```sh
 hetzner login            # paste the token; it is validated against the API and saved
