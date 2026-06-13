@@ -1,3 +1,15 @@
+<p align="center">
+  <img src="assets/hero.png" alt="hetzner — a fast, dependency-free Go CLI for Hetzner Cloud" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Dakaric/hetzner-cli/actions/workflows/ci.yml"><img src="https://github.com/Dakaric/hetzner-cli/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Dakaric/hetzner-cli/releases/latest"><img src="https://img.shields.io/github/v/release/Dakaric/hetzner-cli?sort=semver&display_name=tag&color=c5160d" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Dakaric/hetzner-cli?color=blue" alt="License: MIT"></a>
+  <img src="https://img.shields.io/github/go-mod/go-version/Dakaric/hetzner-cli?logo=go&logoColor=white" alt="Go version">
+  <img src="https://img.shields.io/badge/dependencies-0-brightgreen" alt="Zero external dependencies">
+</p>
+
 # hetzner
 
 A small, fast, dependency-free CLI for the [Hetzner Cloud](https://www.hetzner.com/cloud) API — plus a built-in SSH bridge so the same tool that *manages* your servers can also *get you a shell on them*.
@@ -49,6 +61,13 @@ The installer builds the binary, puts it on your PATH, and runs onboarding.
 
 Grab the matching archive from the [Releases](https://github.com/Dakaric/hetzner-cli/releases) page, unpack it, and put `hetzner` (or `hetzner.exe`) anywhere on your PATH.
 
+Every release ships a `SHA256SUMS` file. Verify a download before trusting it:
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing     # Linux
+shasum -a 256 -c SHA256SUMS --ignore-missing # macOS
+```
+
 ### Manual build
 
 ```sh
@@ -93,6 +112,7 @@ The token is **project-scoped** — it only ever sees the one Cloud project it w
 ## Usage
 
 ```sh
+hetzner version                      # print the CLI version
 hetzner status                       # inventory + connection test
 hetzner servers                      # list servers
 hetzner server my-web                # show one (by id or name)
@@ -166,6 +186,21 @@ The code is organized so each layer owns one thing:
 - `render.go` — human-readable output (`--json` bypasses it)
 - `config.go` — token/dotenv resolution
 - `main.go` — dispatch, flag parsing, onboarding, the destructive-op guard
+
+Every push and pull request runs `go vet`, `go test`, and a build on Linux, macOS, and Windows via [GitHub Actions](.github/workflows/ci.yml).
+
+### Releasing
+
+Releases are cut by pushing a semver tag — [`release.yml`](.github/workflows/release.yml) cross-compiles every target, packages the archives, generates `SHA256SUMS`, and publishes a GitHub Release. The version is stamped into the binary, so `hetzner version` matches the tag.
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+## Contributing
+
+Bug reports and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). For anything security-related, please follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
 ## License
 

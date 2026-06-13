@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -152,8 +153,12 @@ func TestWriteTokenRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Errorf("file perm = %o, want 600 (token file must be private)", perm)
+	// Unix file permissions don't carry meaning on Windows, where Mode().Perm()
+	// reflects the read-only attribute rather than a 0600 bitmask.
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Errorf("file perm = %o, want 600 (token file must be private)", perm)
+		}
 	}
 }
 

@@ -11,6 +11,10 @@ import (
 	"strings"
 )
 
+// version is stamped at build time via -ldflags "-X main.version=v1.2.3".
+// A plain `go build` leaves it as "dev".
+var version = "dev"
+
 // main parses the command, loads config, and dispatches. It orchestrates only:
 // the per-resource work lives in commands.go, the shell bridge in ssh.go, and
 // every HTTP call in client.go.
@@ -24,6 +28,9 @@ func main() {
 	switch cmd {
 	case "help", "-h", "--help":
 		usage()
+		return
+	case "version", "--version", "-v":
+		fmt.Println(version)
 		return
 	case "config":
 		cmdConfig()
@@ -339,6 +346,7 @@ Setup & status:
   hetzner login [token]                Validate a Cloud API token and save it (onboarding)
   hetzner config                       Doctor: base URL, env files, key presence (never the token)
   hetzner status                       Resource counts + connection test
+  hetzner version                      Print the CLI version
 
 Servers:
   hetzner servers [--json]             List all servers
