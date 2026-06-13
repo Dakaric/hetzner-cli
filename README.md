@@ -43,7 +43,7 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/Dakaric/hetzner-cli/main/get.ps1 | iex
 ```
 
-Downloads the prebuilt binary for your OS/arch, puts it on your PATH, and prints the next step. Override the target dir with `HETZNER_BIN_DIR` or pin a tag with `HETZNER_VERSION=v0.1.0`.
+Downloads the prebuilt binary for your OS/arch, verifies it against the release's `SHA256SUMS`, puts it on your PATH, and prints the next step. Override the target dir with `HETZNER_BIN_DIR` or pin a tag with `HETZNER_VERSION=v0.1.0`.
 
 ### From source (needs [Go](https://go.dev/dl/) 1.24+)
 
@@ -146,9 +146,18 @@ Every list/show command takes `--json` for the full, scriptable payload. Servers
 ```
 hetzner ssh  <id|name> [--user root] [--key <path>] [--port 22]
 hetzner exec <id|name> '<command>' [--user root] [--key <path>]
+hetzner exec <id|name> -- <command with its own --flags>
 ```
 
-Defaults: user `root`, key `~/.ssh/id_ed25519`. `exec` runs in batch mode (no password fallback, fails fast); `ssh` is fully interactive. On Windows these need the OpenSSH client (`ssh.exe`) — enable *Settings → Apps → Optional Features → OpenSSH Client*.
+Defaults: user `root`, key `~/.ssh/id_ed25519`. `exec` runs in batch mode (no password fallback, fails fast); `ssh` is fully interactive.
+
+The remote command can be a single quoted argument (`hetzner exec my-web 'docker ps'`). If the command carries its own double-dash flags, put everything after a bare `--` so they reach the server intact instead of being parsed as `hetzner` flags:
+
+```sh
+hetzner exec my-web -- docker run --rm alpine echo hi
+```
+
+On Windows these need the OpenSSH client (`ssh.exe`) — enable *Settings → Apps → Optional Features → OpenSSH Client*.
 
 ## Safety
 
@@ -157,6 +166,8 @@ Destructive operations refuse to run without an explicit `--yes`:
 - `… delete … --yes` for every resource
 - `server poweroff` and `server reset` (hard power actions) need `--yes`
 - `reboot`, `shutdown`, `poweron` are allowed without it
+
+`--force` is accepted as an alias for `--yes`.
 
 There is no interactive confirmation prompt by design — the tool is automation-friendly, so the gate is a flag you can see in the command. No telemetry, no network calls except to the Hetzner API (and your own servers over SSH).
 

@@ -329,14 +329,69 @@ type CreateVolumeRequest struct {
 	Automount bool   `json:"automount"`
 }
 
+// --- Pagination ------------------------------------------------------------
+
+// perPage is the page size requested for every list endpoint. Hetzner caps it
+// at 50; listAll walks all pages, so this only trades round-trips, never
+// completeness.
+const perPage = 50
+
+// listAll is the single owner of list pagination: it walks every page of a
+// Hetzner collection endpoint and concatenates the named array. Each typed list
+// method delegates here, so page-walking and the per-page size live in one
+// place instead of being re-decided (or forgotten) per resource. basePath may
+// already carry a query (e.g. an image type filter); page/per_page are appended.
+func listAll[T any](c *Client, basePath, key string) ([]T, error) {
+	var all []T
+	for page := 1; page > 0; {
+		var env map[string]json.RawMessage
+		if err := c.doJSON(http.MethodGet, pagedPath(basePath, page), nil, &env); err != nil {
+			return nil, err
+		}
+		if raw, ok := env[key]; ok {
+			var items []T
+			if err := json.Unmarshal(raw, &items); err != nil {
+				return nil, fmt.Errorf("decode %s list: %w", key, err)
+			}
+			all = append(all, items...)
+		}
+		page = nextPage(env["meta"])
+	}
+	return all, nil
+}
+
+// pagedPath appends page and per_page to a list path, preserving any query
+// string the caller already set.
+func pagedPath(basePath string, page int) string {
+	sep := "?"
+	if strings.Contains(basePath, "?") {
+		sep = "&"
+	}
+	return fmt.Sprintf("%s%spage=%d&per_page=%d", basePath, sep, page, perPage)
+}
+
+// nextPage reads meta.pagination.next_page from a list response. Hetzner sets it
+// to null on the final page, which decodes to a nil pointer here and returns 0,
+// stopping the walk.
+func nextPage(meta json.RawMessage) int {
+	if len(meta) == 0 {
+		return 0
+	}
+	var m struct {
+		Pagination struct {
+			NextPage *int `json:"next_page"`
+		} `json:"pagination"`
+	}
+	if json.Unmarshal(meta, &m) == nil && m.Pagination.NextPage != nil {
+		return *m.Pagination.NextPage
+	}
+	return 0
+}
+
 // --- Typed endpoints -------------------------------------------------------
 
 func (c *Client) servers() ([]Server, error) {
-	var env struct {
-		Servers []Server `json:"servers"`
-	}
-	err := c.doJSON(http.MethodGet, "/servers", nil, &env)
-	return env.Servers, err
+	return listAll[Server](c, "/servers", "servers")
 }
 
 func (c *Client) server(id int) (Server, error) {
@@ -392,11 +447,7 @@ func (c *Client) serverAction(id int, action string) (Action, error) {
 }
 
 func (c *Client) volumes() ([]Volume, error) {
-	var env struct {
-		Volumes []Volume `json:"volumes"`
-	}
-	err := c.doJSON(http.MethodGet, "/volumes", nil, &env)
-	return env.Volumes, err
+	return listAll[Volume](c, "/volumes", "volumes")
 }
 
 func (c *Client) volume(id int) (Volume, error) {
@@ -429,11 +480,7 @@ func (c *Client) volumeAction(id int, action string, payload any) (Action, error
 }
 
 func (c *Client) networks() ([]Network, error) {
-	var env struct {
-		Networks []Network `json:"networks"`
-	}
-	err := c.doJSON(http.MethodGet, "/networks", nil, &env)
-	return env.Networks, err
+	return listAll[Network](c, "/networks", "networks")
 }
 
 func (c *Client) network(id int) (Network, error) {
@@ -458,11 +505,7 @@ func (c *Client) deleteNetwork(id int) error {
 }
 
 func (c *Client) firewalls() ([]Firewall, error) {
-	var env struct {
-		Firewalls []Firewall `json:"firewalls"`
-	}
-	err := c.doJSON(http.MethodGet, "/firewalls", nil, &env)
-	return env.Firewalls, err
+	return listAll[Firewall](c, "/firewalls", "firewalls")
 }
 
 func (c *Client) firewall(id int) (Firewall, error) {
@@ -488,11 +531,7 @@ func (c *Client) deleteFirewall(id int) error {
 }
 
 func (c *Client) sshKeys() ([]SSHKey, error) {
-	var env struct {
-		SSHKeys []SSHKey `json:"ssh_keys"`
-	}
-	err := c.doJSON(http.MethodGet, "/ssh_keys", nil, &env)
-	return env.SSHKeys, err
+	return listAll[SSHKey](c, "/ssh_keys", "ssh_keys")
 }
 
 func (c *Client) sshKey(id int) (SSHKey, error) {
@@ -518,63 +557,35 @@ func (c *Client) deleteSSHKey(id int) error {
 
 // images lists images, optionally filtered by type (system|snapshot|backup|app).
 func (c *Client) images(imageType string) ([]Image, error) {
-	path := "/images?per_page=50"
+	path := "/images"
 	if imageType != "" {
-		path += "&type=" + url.QueryEscape(imageType)
+		path += "?type=" + url.QueryEscape(imageType)
 	}
-	var env struct {
-		Images []Image `json:"images"`
-	}
-	err := c.doJSON(http.MethodGet, path, nil, &env)
-	return env.Images, err
+	return listAll[Image](c, path, "images")
 }
 
 func (c *Client) serverTypes() ([]ServerType, error) {
-	var env struct {
-		ServerTypes []ServerType `json:"server_types"`
-	}
-	err := c.doJSON(http.MethodGet, "/server_types?per_page=100", nil, &env)
-	return env.ServerTypes, err
+	return listAll[ServerType](c, "/server_types", "server_types")
 }
 
 func (c *Client) locations() ([]Location, error) {
-	var env struct {
-		Locations []Location `json:"locations"`
-	}
-	err := c.doJSON(http.MethodGet, "/locations", nil, &env)
-	return env.Locations, err
+	return listAll[Location](c, "/locations", "locations")
 }
 
 func (c *Client) datacenters() ([]Datacenter, error) {
-	var env struct {
-		Datacenters []Datacenter `json:"datacenters"`
-	}
-	err := c.doJSON(http.MethodGet, "/datacenters", nil, &env)
-	return env.Datacenters, err
+	return listAll[Datacenter](c, "/datacenters", "datacenters")
 }
 
 func (c *Client) floatingIPs() ([]FloatingIP, error) {
-	var env struct {
-		FloatingIPs []FloatingIP `json:"floating_ips"`
-	}
-	err := c.doJSON(http.MethodGet, "/floating_ips", nil, &env)
-	return env.FloatingIPs, err
+	return listAll[FloatingIP](c, "/floating_ips", "floating_ips")
 }
 
 func (c *Client) primaryIPs() ([]PrimaryIP, error) {
-	var env struct {
-		PrimaryIPs []PrimaryIP `json:"primary_ips"`
-	}
-	err := c.doJSON(http.MethodGet, "/primary_ips", nil, &env)
-	return env.PrimaryIPs, err
+	return listAll[PrimaryIP](c, "/primary_ips", "primary_ips")
 }
 
 func (c *Client) loadBalancers() ([]LoadBalancer, error) {
-	var env struct {
-		LoadBalancers []LoadBalancer `json:"load_balancers"`
-	}
-	err := c.doJSON(http.MethodGet, "/load_balancers", nil, &env)
-	return env.LoadBalancers, err
+	return listAll[LoadBalancer](c, "/load_balancers", "load_balancers")
 }
 
 func (c *Client) loadBalancer(id int) (LoadBalancer, error) {
@@ -627,12 +638,30 @@ type idName struct {
 
 // --- HTTP plumbing ---------------------------------------------------------
 
+// newRequest builds a signed request against baseURL+path. It is the single
+// owner of the bearer auth scheme and the JSON Accept/Content-Type headers, so
+// both the typed doJSON path and the raw `api` passthrough sign identically and
+// the scheme lives in exactly one place.
+func (c *Client) newRequest(method, path string, body io.Reader, hasBody bool) (*http.Request, error) {
+	req, err := http.NewRequest(method, c.baseURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if hasBody {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/json")
+	return req, nil
+}
+
 // doJSON executes a request against baseURL+path. A non-nil body is JSON-encoded
 // and sent; a non-nil out receives the decoded JSON response. A non-2xx status
 // surfaces Hetzner's error envelope so failures are never silent.
 func (c *Client) doJSON(method, path string, body any, out any) error {
 	var reader io.Reader
-	if body != nil {
+	hasBody := body != nil
+	if hasBody {
 		encoded, err := json.Marshal(body)
 		if err != nil {
 			return err
@@ -640,15 +669,10 @@ func (c *Client) doJSON(method, path string, body any, out any) error {
 		reader = bytes.NewReader(encoded)
 	}
 
-	req, err := http.NewRequest(method, c.baseURL+path, reader)
+	req, err := c.newRequest(method, path, reader, hasBody)
 	if err != nil {
 		return err
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -675,18 +699,14 @@ func (c *Client) doJSON(method, path string, body any, out any) error {
 // typed methods do not cover.
 func (c *Client) raw(method, path string, body []byte) (int, []byte, error) {
 	var reader io.Reader
-	if len(body) > 0 {
+	hasBody := len(body) > 0
+	if hasBody {
 		reader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequest(method, c.baseURL+path, reader)
+	req, err := c.newRequest(method, path, reader, hasBody)
 	if err != nil {
 		return 0, nil, err
 	}
-	if len(body) > 0 {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {

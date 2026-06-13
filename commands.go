@@ -4,12 +4,24 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // This file holds the per-resource command handlers. main.go owns dispatch and
 // the shared harness (flag parsing, output, the destructive-op guard); each
 // handler here turns parsed args into one or more typed client calls and
 // renders the result. Writes go through requireYes before touching state.
+
+// showOrUnknown handles the default arm of a resource dispatcher. A "show" only
+// ever takes a single positional reference, so two or more positionals mean the
+// first token was almost certainly a mistyped subcommand — surface that with the
+// valid verbs instead of a confusing "no <resource> named <verb>" lookup error.
+func showOrUnknown(args []string, verbs string, show func()) {
+	if len(parseOpts(args).pos) > 1 {
+		fail(fmt.Errorf("unknown subcommand %q; expected one of: %s — or <id|name> to show one", args[0], verbs))
+	}
+	show()
+}
 
 // --- Servers ---------------------------------------------------------------
 
@@ -43,7 +55,7 @@ func cmdServer(c *Client, args []string) {
 	case "reboot", "poweron", "poweroff", "shutdown", "reset":
 		serverActionCmd(c, sub, args[1:])
 	default:
-		showServerCmd(c, args)
+		showOrUnknown(args, "create, delete, reboot, poweron, poweroff, shutdown, reset", func() { showServerCmd(c, args) })
 	}
 }
 
@@ -101,7 +113,9 @@ func deleteServerCmd(c *Client, args []string) {
 	if err != nil {
 		fail(err)
 	}
-	requireYes(o, fmt.Sprintf("delete server %d", id))
+	if err := requireYes(o, fmt.Sprintf("delete server %d", id)); err != nil {
+		fail(err)
+	}
 	if err := c.deleteServer(id); err != nil {
 		fail(err)
 	}
@@ -115,7 +129,9 @@ func serverActionCmd(c *Client, action string, args []string) {
 		fail(err)
 	}
 	if action == "poweroff" || action == "reset" {
-		requireYes(o, fmt.Sprintf("%s server %d (hard, may lose unsaved data)", action, id))
+		if err := requireYes(o, fmt.Sprintf("%s server %d (hard, may lose unsaved data)", action, id)); err != nil {
+			fail(err)
+		}
 	}
 	act, err := c.serverAction(id, action)
 	if err != nil {
@@ -162,7 +178,7 @@ func cmdVolume(c *Client, args []string) {
 	case "detach":
 		detachVolumeCmd(c, args[1:])
 	default:
-		showVolumeCmd(c, args)
+		showOrUnknown(args, "create, delete, attach, detach", func() { showVolumeCmd(c, args) })
 	}
 }
 
@@ -186,7 +202,11 @@ func showVolumeCmd(c *Client, args []string) {
 func createVolumeCmd(c *Client, args []string) {
 	o := parseOpts(args)
 	name := firstNonEmpty(o.get("name"), posAt(o.pos, 0))
-	size, _ := strconv.Atoi(o.get("size"))
+	sizeStr := o.get("size")
+	size, err := strconv.Atoi(sizeStr)
+	if sizeStr != "" && err != nil {
+		fail(fmt.Errorf("--size must be a whole number of GB, got %q", sizeStr))
+	}
 	if name == "" || size <= 0 {
 		fail(fmt.Errorf("usage: hetzner volume create --name <n> --size <GB> (--location fsn1 | --server <id|name>) [--format ext4] [--automount]"))
 	}
@@ -224,7 +244,9 @@ func deleteVolumeCmd(c *Client, args []string) {
 	if err != nil {
 		fail(err)
 	}
-	requireYes(o, fmt.Sprintf("delete volume %d", id))
+	if err := requireYes(o, fmt.Sprintf("delete volume %d", id)); err != nil {
+		fail(err)
+	}
 	if err := c.deleteVolume(id); err != nil {
 		fail(err)
 	}
@@ -250,6 +272,10 @@ func attachVolumeCmd(c *Client, args []string) {
 	if err != nil {
 		fail(err)
 	}
+	if o.json() {
+		printJSON(act)
+		return
+	}
 	fmt.Println(renderAction("attach volume", volID, act))
 }
 
@@ -262,6 +288,10 @@ func detachVolumeCmd(c *Client, args []string) {
 	act, err := c.volumeAction(volID, "detach", nil)
 	if err != nil {
 		fail(err)
+	}
+	if o.json() {
+		printJSON(act)
+		return
 	}
 	fmt.Println(renderAction("detach volume", volID, act))
 }
@@ -296,7 +326,7 @@ func cmdNetwork(c *Client, args []string) {
 	case "delete", "rm":
 		deleteNetworkCmd(c, args[1:])
 	default:
-		showNetworkCmd(c, args)
+		showOrUnknown(args, "create, delete", func() { showNetworkCmd(c, args) })
 	}
 }
 
@@ -341,7 +371,9 @@ func deleteNetworkCmd(c *Client, args []string) {
 	if err != nil {
 		fail(err)
 	}
-	requireYes(o, fmt.Sprintf("delete network %d", id))
+	if err := requireYes(o, fmt.Sprintf("delete network %d", id)); err != nil {
+		fail(err)
+	}
 	if err := c.deleteNetwork(id); err != nil {
 		fail(err)
 	}
@@ -378,7 +410,7 @@ func cmdFirewall(c *Client, args []string) {
 	case "delete", "rm":
 		deleteFirewallCmd(c, args[1:])
 	default:
-		showFirewallCmd(c, args)
+		showOrUnknown(args, "create, delete", func() { showFirewallCmd(c, args) })
 	}
 }
 
@@ -433,7 +465,9 @@ func deleteFirewallCmd(c *Client, args []string) {
 	if err != nil {
 		fail(err)
 	}
-	requireYes(o, fmt.Sprintf("delete firewall %d", id))
+	if err := requireYes(o, fmt.Sprintf("delete firewall %d", id)); err != nil {
+		fail(err)
+	}
 	if err := c.deleteFirewall(id); err != nil {
 		fail(err)
 	}
@@ -470,7 +504,7 @@ func cmdSSHKey(c *Client, args []string) {
 	case "delete", "rm":
 		deleteSSHKeyCmd(c, args[1:])
 	default:
-		showSSHKeyCmd(c, args)
+		showOrUnknown(args, "create, delete", func() { showSSHKeyCmd(c, args) })
 	}
 }
 
@@ -502,6 +536,9 @@ func createSSHKeyCmd(c *Client, args []string) {
 		}
 		publicKey = string(data)
 	}
+	// Normalize at the source so the API, --json output, and the text renderer
+	// all see the same canonical key — a key file carries a trailing newline.
+	publicKey = strings.TrimSpace(publicKey)
 	if name == "" || publicKey == "" {
 		fail(fmt.Errorf("usage: hetzner ssh-key create --name <n> (--public-key '<key>' | --public-key-file <path>)"))
 	}
@@ -522,7 +559,9 @@ func deleteSSHKeyCmd(c *Client, args []string) {
 	if err != nil {
 		fail(err)
 	}
-	requireYes(o, fmt.Sprintf("delete ssh key %d", id))
+	if err := requireYes(o, fmt.Sprintf("delete ssh key %d", id)); err != nil {
+		fail(err)
+	}
 	if err := c.deleteSSHKey(id); err != nil {
 		fail(err)
 	}
@@ -562,6 +601,9 @@ func cmdServerTypes(c *Client, args []string) {
 	for _, t := range types {
 		fmt.Println(renderServerTypeLine(t))
 	}
+	if len(types) == 0 {
+		fmt.Fprintln(os.Stderr, "no server types")
+	}
 }
 
 func cmdLocations(c *Client, args []string) {
@@ -577,6 +619,9 @@ func cmdLocations(c *Client, args []string) {
 	for _, l := range locations {
 		fmt.Println(renderLocationLine(l))
 	}
+	if len(locations) == 0 {
+		fmt.Fprintln(os.Stderr, "no locations")
+	}
 }
 
 func cmdDatacenters(c *Client, args []string) {
@@ -591,6 +636,9 @@ func cmdDatacenters(c *Client, args []string) {
 	}
 	for _, d := range datacenters {
 		fmt.Println(renderDatacenterLine(d))
+	}
+	if len(datacenters) == 0 {
+		fmt.Fprintln(os.Stderr, "no datacenters")
 	}
 }
 
@@ -681,14 +729,29 @@ func cmdPricing(c *Client, args []string) {
 // main resources, which also proves the token works against the live API.
 func cmdStatus(c *Client, args []string) {
 	o := parseOpts(args)
+	// Every count is fatal on error, like every other command: a status whose
+	// job is to prove the token works must never coerce a failed call into a
+	// misleading "0" — empty and failed have to look different.
 	servers, err := c.servers()
 	if err != nil {
 		fail(err)
 	}
-	volumes, _ := c.volumes()
-	networks, _ := c.networks()
-	firewalls, _ := c.firewalls()
-	floating, _ := c.floatingIPs()
+	volumes, err := c.volumes()
+	if err != nil {
+		fail(err)
+	}
+	networks, err := c.networks()
+	if err != nil {
+		fail(err)
+	}
+	firewalls, err := c.firewalls()
+	if err != nil {
+		fail(err)
+	}
+	floating, err := c.floatingIPs()
+	if err != nil {
+		fail(err)
+	}
 
 	running := 0
 	for _, s := range servers {

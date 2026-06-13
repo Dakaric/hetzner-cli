@@ -32,6 +32,25 @@ try {
     $zip = Join-Path $tmp $asset
     Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
 
+    # Verify the download against the release's SHA256SUMS. A mismatch is fatal;
+    # a release without SHA256SUMS only skips the check with a warning.
+    $sumsUrl  = $url -replace '/[^/]+$', '/SHA256SUMS'
+    $sumsFile = Join-Path $tmp 'SHA256SUMS'
+    $haveSums = $true
+    try { Invoke-WebRequest -Uri $sumsUrl -OutFile $sumsFile -UseBasicParsing }
+    catch { $haveSums = $false; Write-Warning "no SHA256SUMS published for $version; skipping checksum verification." }
+    if ($haveSums) {
+        $line = Select-String -Path $sumsFile -SimpleMatch -Pattern $asset | Select-Object -First 1
+        if ($line) {
+            $expected = ($line.Line -split '\s+')[0]
+            $actual   = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash
+            if ($actual -ne $expected) { throw "checksum mismatch for $asset (expected $expected, got $actual)" }
+            Write-Host "Checksum verified."
+        } else {
+            Write-Warning "$asset not listed in SHA256SUMS; skipping checksum verification."
+        }
+    }
+
     Expand-Archive -Path $zip -DestinationPath $tmp -Force
     $exe = Join-Path $tmp 'hetzner.exe'
     if (-not (Test-Path $exe)) { throw "archive did not contain hetzner.exe" }

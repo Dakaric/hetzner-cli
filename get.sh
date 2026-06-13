@@ -15,6 +15,26 @@ VERSION="${HETZNER_VERSION:-latest}"
 
 die() { echo "Error: $*" >&2; exit 1; }
 
+# fetch URL DEST — download with curl or wget; returns non-zero on failure.
+fetch() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$1" -o "$2"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$2" "$1"
+  else
+    die "need curl or wget to download"
+  fi
+}
+
+# sha256 FILE — print the file's SHA-256 hex digest, or nothing if no tool exists.
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 os="$(uname -s)"
 case "$os" in
   Darwin) os="darwin" ;;
@@ -40,12 +60,26 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 echo "Downloading $asset ($VERSION)..."
-if command -v curl >/dev/null 2>&1; then
-  curl -fsSL "$url" -o "$tmp/$asset" || die "download failed: $url"
-elif command -v wget >/dev/null 2>&1; then
-  wget -qO "$tmp/$asset" "$url" || die "download failed: $url"
+fetch "$url" "$tmp/$asset" || die "download failed: $url"
+
+# Verify the download against the release's SHA256SUMS when both the checksum
+# file and a hashing tool are available. A mismatch is fatal; a missing tool or
+# (older) release without SHA256SUMS only skips the check with a note.
+sums_url="${url%/*}/SHA256SUMS"
+if fetch "$sums_url" "$tmp/SHA256SUMS" 2>/dev/null; then
+  expected="$(awk -v f="$asset" '$2 == f {print $1}' "$tmp/SHA256SUMS")"
+  actual="$(sha256 "$tmp/$asset")"
+  if [ -z "$actual" ]; then
+    echo "Note: no sha256 tool found; skipping checksum verification." >&2
+  elif [ -z "$expected" ]; then
+    echo "Note: $asset not listed in SHA256SUMS; skipping checksum verification." >&2
+  elif [ "$expected" != "$actual" ]; then
+    die "checksum mismatch for $asset (expected $expected, got $actual) — aborting"
+  else
+    echo "Checksum verified."
+  fi
 else
-  die "need curl or wget to download"
+  echo "Note: no SHA256SUMS published for $VERSION; skipping checksum verification." >&2
 fi
 
 tar -xzf "$tmp/$asset" -C "$tmp" || die "could not unpack $asset"

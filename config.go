@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -76,7 +77,7 @@ func envFileCandidates() []string {
 // points at ~/.config).
 func dedupe(paths []string) []string {
 	seen := map[string]bool{}
-	out := paths[:0]
+	out := make([]string, 0, len(paths))
 	for _, p := range paths {
 		if !seen[p] {
 			seen[p] = true
@@ -153,6 +154,24 @@ func parseEnvFile(path string) map[string]string {
 		out[key] = val
 	}
 	return out
+}
+
+// warnInsecureBaseURL prints a one-line stderr warning when the resolved base
+// URL would send the bearer token over plaintext http to a non-loopback host.
+// It never blocks — a local proxy or a test server on http is occasionally
+// legitimate — but a token leaving over the wire in the clear must not be
+// silent. Both doJSON and raw inherit the base URL, so warning once here covers
+// the typed commands and the `api` passthrough alike.
+func warnInsecureBaseURL(base string) {
+	u, err := url.Parse(base)
+	if err != nil || u.Scheme != "http" {
+		return
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1", "":
+		return
+	}
+	fmt.Fprintf(os.Stderr, "warning: HETZNER_BASE_URL is http:// (%s) — your API token will be sent in plaintext\n", base)
 }
 
 func firstNonEmpty(values ...string) string {

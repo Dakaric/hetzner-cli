@@ -44,6 +44,7 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
+	warnInsecureBaseURL(cfg.BaseURL)
 	client := newClient(cfg)
 
 	switch cmd {
@@ -124,7 +125,7 @@ func cmdLogin(args []string) {
 	o := parseOpts(args)
 	token := strings.TrimSpace(firstNonEmpty(posAt(o.pos, 0), promptToken()))
 	if token == "" {
-		fail(fmt.Errorf("no token provided"))
+		fail(fmt.Errorf("no token provided — pass it as an argument (`hetzner login <token>`) or set HETZNER_API_KEY for a headless setup"))
 	}
 
 	client := newClient(Config{BaseURL: defaultBaseURL, Token: token})
@@ -230,12 +231,15 @@ func cmdAPI(c *Client, args []string) {
 
 // opts is the forgiving, order-independent flag set shared by all commands.
 // Boolean flags land in bools, valued flags in flags, repeatable --ssh-key in
-// sshKeys, and everything else is a positional argument.
+// sshKeys, and everything else is a positional argument. Everything after a bare
+// "--" is captured verbatim in rest, so a remote command for `exec` can carry
+// its own --flags without the parser swallowing them.
 type opts struct {
 	flags   map[string]string
 	bools   map[string]bool
 	sshKeys []string
 	pos     []string
+	rest    []string
 }
 
 // parseOpts splits args into flags, bools, repeatable ssh keys, and
@@ -246,6 +250,11 @@ func parseOpts(args []string) opts {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
+		case arg == "--":
+			// Everything after a bare "--" is passed through untouched, so a
+			// remote command keeps its own --flags (e.g. exec ... -- docker ps --all).
+			o.rest = append(o.rest, args[i+1:]...)
+			return o
 		case arg == "--json" || arg == "-j":
 			o.bools["json"] = true
 		case arg == "--yes" || arg == "-y" || arg == "--force":
@@ -298,11 +307,13 @@ func posAt(pos []string, i int) string {
 
 // requireYes refuses a destructive operation unless --yes was passed. The CLI
 // is driven by an agent without a TTY, so the guard is an explicit flag rather
-// than an interactive prompt.
-func requireYes(o opts, what string) {
+// than an interactive prompt. It returns the refusal as an error (rather than
+// exiting) so the safety contract is unit-testable; callers fail() on it.
+func requireYes(o opts, what string) error {
 	if !o.yes() {
-		fail(fmt.Errorf("refusing to %s without --yes (re-run with --yes to confirm)", what))
+		return fmt.Errorf("refusing to %s without --yes (re-run with --yes to confirm)", what)
 	}
+	return nil
 }
 
 // parseJSONArray validates that s is a JSON array and returns it decoded, so the
@@ -360,6 +371,7 @@ Servers:
 Shell into a server (control plane → data plane, via the system ssh client):
   hetzner ssh  <id|name> [--user root] [--key <path>] [--port 22]   Interactive shell
   hetzner exec <id|name> '<command>' [--user root] [--key <path>]   Run one command, stream output
+                 (command with its own flags: hetzner exec <id|name> -- docker ps --all)
 
 Volumes:
   hetzner volumes [--json]
@@ -405,6 +417,8 @@ Config (env vars override the dotenv files):
   HETZNER_BASE_URL    optional, defaults to https://api.hetzner.cloud/v1
   HETZNER_ENV_FILE    optional, pin a single dotenv file
 
-Destructive commands (delete, hard poweroff/reset) require --yes.
+Destructive commands (delete, hard poweroff/reset) require --yes (alias: --force).
+
+Aliases: delete → rm, exec → run, server-types → types, ssh-keys → keys.
 `)
 }

@@ -36,6 +36,29 @@ func TestServersListDecodesEnvelope(t *testing.T) {
 	}
 }
 
+func TestListAllFollowsPagination(t *testing.T) {
+	// Page 1 points at a next page; page 2 ends the walk with next_page null.
+	// listAll must concatenate both, so a >1-page account is never truncated.
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("page") {
+		case "1":
+			w.Write([]byte(`{"servers":[{"id":1,"name":"a"}],"meta":{"pagination":{"page":1,"next_page":2}}}`))
+		case "2":
+			w.Write([]byte(`{"servers":[{"id":2,"name":"b"}],"meta":{"pagination":{"page":2,"next_page":null}}}`))
+		default:
+			t.Errorf("unexpected page %q", r.URL.Query().Get("page"))
+		}
+	})
+
+	servers, err := c.servers()
+	if err != nil {
+		t.Fatalf("servers: %v", err)
+	}
+	if len(servers) != 2 || servers[0].ID != 1 || servers[1].ID != 2 {
+		t.Fatalf("got %+v, want both pages concatenated (ids 1,2)", servers)
+	}
+}
+
 func TestServerShow(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/servers/7" {

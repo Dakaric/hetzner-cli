@@ -174,7 +174,7 @@ func renderSSHKeyDetail(k SSHKey) string {
 	fmt.Fprintf(&b, "  fingerprint: %s\n", k.Fingerprint)
 	fmt.Fprintf(&b, "  labels:      %s\n", labelsText(k.Labels))
 	fmt.Fprintf(&b, "  created:     %s\n", fmtTime(k.Created))
-	fmt.Fprintf(&b, "  public key:  %s", strings.TrimSpace(k.PublicKey))
+	fmt.Fprintf(&b, "  public key:  %s", k.PublicKey)
 	return b.String()
 }
 

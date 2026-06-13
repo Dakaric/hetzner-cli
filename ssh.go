@@ -57,18 +57,30 @@ func cmdSSH(c *Client, args []string) {
 }
 
 // cmdExec runs a single command on a server and streams its output back. This
-// is the non-interactive form an agent (or a script) uses.
+// is the non-interactive form an agent (or a script) uses. The remote command
+// can be a single quoted argument ('docker ps') or, to keep its own --flags
+// intact, everything after a bare "--" (exec my-web -- docker ps --all).
 func cmdExec(c *Client, args []string) {
 	o := parseOpts(args)
-	if len(o.pos) < 2 {
-		fail(fmt.Errorf("usage: hetzner exec <id|name> '<command>'   (e.g. hetzner exec ai-test 'docker ps')"))
+	if len(o.pos) == 0 {
+		fail(execUsage())
+	}
+	remoteCommand := strings.Join(o.rest, " ")
+	if remoteCommand == "" {
+		remoteCommand = strings.Join(o.pos[1:], " ")
+	}
+	if remoteCommand == "" {
+		fail(execUsage())
 	}
 	ip, _, err := c.serverIPv4(o.pos[0])
 	if err != nil {
 		fail(err)
 	}
-	remoteCommand := strings.Join(o.pos[1:], " ")
 	runSSH(append(sshArgs(o, ip, true), remoteCommand))
+}
+
+func execUsage() error {
+	return fmt.Errorf("usage: hetzner exec <id|name> '<command>'   (e.g. hetzner exec ai-test 'docker ps'; for a command with its own flags: hetzner exec ai-test -- docker ps --all)")
 }
 
 // runSSH executes the system ssh client with the given args, wiring the current
